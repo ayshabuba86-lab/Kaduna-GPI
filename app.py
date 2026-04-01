@@ -60,7 +60,7 @@ page = st.sidebar.radio("Go to", ["Dashboard", "Regional Heatmap", "Model Perfor
 
 # --- PAGE 1: DASHBOARD ---
 if page == "Dashboard":
-    st.title("📊 Kaduna GPI Overview")
+    st.title("Kaduna GPI Overview")
     if 'Year' in df.columns:
         selected_year = st.sidebar.selectbox("Select Academic Year", options=df['Year'].unique())
         filtered_df = df[df['Year'] == selected_year]
@@ -80,7 +80,7 @@ if page == "Dashboard":
 
 # --- PAGE 2: REGIONAL HEATMAP ---
 elif page == "Regional Heatmap":
-    st.title("🔥 Regional Variation Heatmap")
+    st.title("Regional Variation Heatmap")
     if 'LGA' in df.columns and 'Year' in df.columns:
         # Creating heatmap based on notebook data structure
         heatmap_data = df.pivot_table(index='LGA', columns='Year', values='GPI')
@@ -92,7 +92,7 @@ elif page == "Regional Heatmap":
 
 # --- PAGE 3: MODEL PERFORMANCE ---
 elif page == "Model Performance":
-    st.title("🤖 Model Performance Metrics")
+    st.title("Model Performance Metrics")
     
     # Feature selection matching your notebook
     required_cols = ['LGA', 'GPI', 'total number of schools', 'total number of pupils']
