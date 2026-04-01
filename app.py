@@ -20,7 +20,7 @@ st.title("📊 Kaduna Gender Parity Index Analysis")
 @st.cache_data
 def load_data():
     # Load and clean data based on your notebook logic
-    data = pd.read_excel('GPI data.xlsx')
+    data = pd.read_excel('GPI data_main.xlsx')
     data.columns = data.columns.str.strip()
     data['LGA'] = data['LGA'].str.upper().str.strip()
 
