@@ -11,6 +11,11 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, classification_report
+from sklearn.preprocessing import LabelEncoder
 
 # Set page title
 st.set_page_config(page_title="Kaduna GPI Dashboard", layout="wide")
@@ -38,31 +43,95 @@ def load_data():
 try:
     df = load_data()
 
-    # --- SIDEBAR FILTERS ---
-    st.sidebar.header("Filter Data")
-    selected_year = st.sidebar.selectbox("Select Academic Year", options=df['Year'].unique())
-    selected_lga = st.sidebar.multiselect("Select LGAs", options=df['LGA'].unique(), default=df['LGA'].unique()[:5])
+    # --- SIDEBAR: DATA SOURCE SELECTION ---
+st.sidebar.title("Data Source")
+data_source = st.sidebar.radio("Select Data Source:", ["Use Repository Data", "Upload New File"])
 
-    # Filter dataframe
-    filtered_df = df[(df['Year'] == selected_year) & (df['LGA'].isin(selected_lga))]
+df = None
 
-    # --- KEY METRICS ---
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Schools", int(filtered_df['total number of schools'].sum()))
-    col2.metric("Total Pupils", int(filtered_df['total number of pupils'].sum()))
-    col3.metric("Avg GPI", round(filtered_df['GPI'].mean(), 2))
+if data_source == "Upload New File":
+    uploaded_file = st.sidebar.file_uploader("Upload your GPI Excel file", type=["xlsx"])
+    if uploaded_file is not None:
+        df = clean_data(pd.read_excel(uploaded_file))
+    else:
+        st.info("Please upload an Excel file to proceed.")
+        st.stop()
+else:
+    # Fallback to repository data
+    try:
+        df = clean_data(pd.read_excel('GPI data.xlsx'))
+    except FileNotFoundError:
+        st.error("Repository file 'GPI data.xlsx' not found. Please upload a file via the sidebar.")
+        st.stop()
 
-    # --- VISUALIZATIONS ---
-    st.subheader(f"Gender Parity Index by LGA ({selected_year})")
+# --- SIDEBAR NAVIGATION ---
+st.sidebar.markdown("---")
+st.sidebar.title("Navigation")
+page = st.sidebar.radio("Go to", ["Dashboard", "Regional Heatmap", "Model Performance"])
 
-    fig, ax = plt.subplots(figsize=(10, 5))
-    sns.barplot(data=filtered_df, x='LGA', y='GPI', ax=ax, palette="viridis")
-    plt.xticks(rotation=45)
-    st.pyplot(fig)
+# --- PAGE 1: DASHBOARD ---
+if page == "Dashboard":
+    st.title("📊 Kaduna GPI Overview")
+    if 'Year' in df.columns:
+        selected_year = st.sidebar.selectbox("Select Academic Year", options=df['Year'].unique())
+        filtered_df = df[df['Year'] == selected_year]
+    else:
+        filtered_df = df
 
-    # Show Data Table
-    if st.checkbox("Show raw data"):
-        st.write(filtered_df)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("GPI by LGA")
+        fig, ax = plt.subplots()
+        sns.barplot(data=filtered_df, x='LGA', y='GPI', ax=ax)
+        plt.xticks(rotation=90)
+        st.pyplot(fig)
+    with col2:
+        st.subheader("Data Summary")
+        st.dataframe(filtered_df)
 
-except FileNotFoundError:
-    st.error("Please upload 'GPI data.xlsx' to the repository.")
+# --- PAGE 2: REGIONAL HEATMAP ---
+elif page == "Regional Heatmap":
+    st.title("🔥 Regional Variation Heatmap")
+    if 'LGA' in df.columns and 'Year' in df.columns:
+        heatmap_data = df.pivot_table(index='LGA', columns='Year', values='GPI')
+        fig, ax = plt.subplots(figsize=(12, 10))
+        sns.heatmap(heatmap_data, annot=True, cmap="YlGnBu", fmt=".2f", ax=ax)
+        st.pyplot(fig)
+    else:
+        st.warning("Heatmap requires 'LGA' and 'Year' columns.")
+
+# --- PAGE 3: MODEL PERFORMANCE ---
+elif page == "Model Performance":
+    st.title("🤖 Model Performance Metrics")
+    
+    # Preparation logic based on your notebook
+    model_df = df.copy().dropna(subset=['LGA', 'GPI', 'total number of schools', 'total number of pupils'])
+    le = LabelEncoder()
+    model_df['LGA_Encoded'] = le.fit_transform(model_df['LGA'])
+    
+    # Features and Target
+    X = model_df[['LGA_Encoded', 'total number of schools', 'total number of pupils']]
+    y = (model_df['GPI'] >= 1.0).astype(int) 
+
+    if len(y.unique()) < 2:
+        st.error("The data doesn't have enough variety (both parity and non-parity) to train a model.")
+    else:
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+        model_choice = st.selectbox("Choose Model", ["Random Forest", "Logistic Regression"])
+        clf = RandomForestClassifier(random_state=42) if model_choice == "Random Forest" else LogisticRegression()
+
+        clf.fit(X_train, y_train)
+        y_pred = clf.predict(X_test)
+        y_probs = clf.predict_proba(X_test)[:, 1]
+
+        # Metrics
+        metrics_cols = st.columns(5)
+        metrics_cols[0].metric("Accuracy", f"{accuracy_score(y_test, y_pred):.2%}")
+        metrics_cols[1].metric("Precision", f"{precision_score(y_test, y_pred):.2%}")
+        metrics_cols[2].metric("Recall", f"{recall_score(y_test, y_pred):.2%}")
+        metrics_cols[3].metric("F1-Score", f"{f1_score(y_test, y_pred):.2%}")
+        metrics_cols[4].metric("AUC-ROC", f"{roc_auc_score(y_test, y_probs):.2f}")
+
+        st.subheader("Detailed Classification Report")
+        st.text(classification_report(y_test, y_pred))
